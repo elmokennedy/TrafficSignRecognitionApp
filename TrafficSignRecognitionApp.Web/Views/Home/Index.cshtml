@@ -1,0 +1,250 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div>
+    <div class="overflow-hidden">
+        <div class="float-left">
+            <div id="image-container">
+                <div id="hint">Your image will show up here</div>
+            </div>
+        </div>
+        <div class="float-right">
+            <div>
+                <div class="bold-text">Image URL</div>
+                <div>
+                    <form class="url-search" asp-action="UploadUrlData" onsubmit="return getByUrl(event);">
+                        <input type="text" placeholder="Enter Image URL" id="imageUrl">
+                        <button type="submit"><i class="fa fa-search"></i></button>
+                    </form>
+                </div>
+            </div>
+            <div class="mt-2 mb-2">
+                or
+            </div>
+            <div>
+                <form asp-action="UploadData" method="post" id="file-form" enctype="multipart/form-data">
+                    <input type="button" id="browse-file" value="Browse local file"/>
+                    <input type="file" accept=".jpg,.jpeg,.png,.bmp" id="file-input" name="image" class="display-none"/>
+                </form>
+                <div>File formats accepted: <span class="bold-text">jpg, jpeg, png, bmp</span></div>
+                <div class="mt-3">Probability threshold</div>
+                <div>
+                    <input type="range" id="threshold" value="50" min="0" max="100" onchange="updatePercents(this.value);"/>
+                    <span id="threshold-percent">50%</span>
+                </div>
+            </div>
+            <div id="prediction-block" class="mt-3 display-none">
+                <div>Predictions</div>
+                <table id="prediction-table">
+                    <tr>
+                        <td>Image</td>
+                        <td>Tag</td>
+                        <td>Probability</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function() {
+        $('#browse-file').on('click',
+            function() {
+                $("#uploaded-image").remove();
+                $("#prediction-table").find("tr:gt(0)").remove();
+                $("#prediction-block").hide();
+                $("#hint").show();
+
+                $('#file-input').val('');
+                $('#file-input').trigger('click');
+            }
+        );
+
+        $('#file-input').change(
+            function(e) {
+                if ($(this).val()) {
+                    var file = e.originalEvent.srcElement.files[0];
+
+                    var img = createImg();
+
+                    var reader = new FileReader();
+                    reader.onloadend = function() {
+                        img.src = reader.result;
+                    }
+                    reader.readAsDataURL(file);
+
+                    $("#hint").hide();
+                    $(img).appendTo("#image-container");
+
+                    $("<div class='loading-gif'><img id='loading' src='images/ajax-loader.gif' alt='loading'/></div>").appendTo("#image-container");
+
+                    $('#file-form').submit();
+                }
+            }
+        );
+
+        $("#file-form").submit(function(e) {
+            e.preventDefault();
+
+            var formAction = $(this).attr("action");
+            var formData = new FormData();
+
+            var fileInput = $('#file-input')[0];
+            var file = fileInput.files[0];
+            formData.append("image", file);
+
+            var threshold = $("#threshold").val();
+            formData.append("threshold", threshold);
+
+            $.ajax({
+                type: 'post',
+                url: formAction,
+                data: formData,
+                processData: false,
+                contentType: false,
+                beforeSend: function() {
+                    $("#loading").show();
+                }
+            }).done(function(data) {
+                if (data.success) {
+                    $("#loading").remove();
+                    $("#uploaded-image").remove();
+
+                    var img = createImg();
+                    img.src = data.predictedImg;
+
+                    if (data.predictions.length > 0) {
+                        $.each(data.predictions,
+                            function(index, value) {
+                                var predictionRow = '<tr><td><img src="' + value.imagePath + '"/ width="50" height="50"></td><td>' + value.tag + '</td><td>' + value.probability + '</td></tr>';
+                                $('#prediction-table tr:last').after(predictionRow);
+                            });
+                        $("#prediction-block").show();
+
+                        $.toaster({
+                            message: "There are some objects was detected on your image",
+                            title: "Success",
+                            priority: 'success',
+                            settings: { 'timeout': 5000 }
+                        });
+                    } else {
+                        $.toaster({
+                            message: "No objects was detected on your image",
+                            title: "No object",
+                            priority: 'info',
+                            settings: { 'timeout': 5000 }
+                        });
+                    }
+
+                    $(img).appendTo("#image-container");
+                } else {
+                    $("#loading").remove();
+
+                    $.toaster({
+                        message: "Error occurred while processing your image",
+                        title: "Error occurred",
+                        priority: 'danger',
+                        settings: { 'timeout': 5000 }
+                    });
+                }
+            });
+        });
+    });
+
+    function getByUrl(e) {
+        e.preventDefault();
+
+        var imageUrl = $("#imageUrl").val();
+
+        if (imageUrl === '') {
+            return false;
+        }
+
+        $("#uploaded-image").remove();
+        $("#prediction-table").find("tr:gt(0)").remove();
+        $("#prediction-block").hide();
+        $("#hint").show();
+
+        var img = createImg();
+        img.src = imageUrl;
+        $("#hint").hide();
+        $(img).appendTo("#image-container");
+        $("<div class='loading-gif'><img id='loading' src='images/ajax-loader.gif' alt='loading'/></div>").appendTo("#image-container");
+
+        var formAction = $(".url-search").attr("action");
+        var formData = new FormData();
+
+        formData.append("imageUrl", imageUrl);
+
+        var threshold = $("#threshold").val();
+        formData.append("threshold", threshold);
+
+        $.ajax({
+            type: 'post',
+            url: formAction,
+            data: formData,
+            processData: false,
+            contentType: false,
+            beforeSend: function() {
+                $("#loading").show();
+            }
+        }).done(function(data) {
+            if (data.success) {
+
+                $("#loading").remove();
+                $("#uploaded-image").remove();
+
+                var newImg = createImg();
+                newImg.src = data.predictedImg;
+
+                if (data.predictions.length > 0) {
+                    $.each(data.predictions,
+                        function(index, value) {
+                            var predictionRow = '<tr><td><img src="' + value.imagePath + '"/ width="50" height="50"></td><td>' + value.tag + '</td><td>' + value.probability + '</td></tr>';
+                            $('#prediction-table tr:last').after(predictionRow);
+                        });
+                    $("#prediction-block").show();
+
+                    $.toaster({
+                        message: "There are some objects was detected on your image",
+                        title: "Success",
+                        priority: 'success',
+                        settings: { 'timeout': 5000 }
+                    });
+                } else {
+                    $.toaster({
+                        message: "No objects was detected on your image",
+                        title: "No object",
+                        priority: 'info',
+                        settings: { 'timeout': 5000 }
+                    });
+                }
+
+                $(newImg).appendTo("#image-container");
+            } else {
+                $("#loading").remove();
+
+                $.toaster({
+                    message: "You have entered incorrect image URL",
+                    title: "Error occurred",
+                    priority: 'danger',
+                    settings: { 'timeout': 5000 }
+                });
+            }
+        });
+    };
+
+    function createImg() {
+        var img = document.createElement("img");
+        img.setAttribute("id", "uploaded-image");
+        img.style.cssText = "max-width: 100%;  max-height: 100%; display: block; margin:auto;";
+
+        return img;
+    }
+
+    function updatePercents(value) {
+        $("#threshold-percent").text(value + "%");
+    }
+</script>

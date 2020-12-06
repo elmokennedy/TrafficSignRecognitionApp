@@ -1,0 +1,4 @@
+Main road
+Pedestrian crossing
+Stop
+Yield
